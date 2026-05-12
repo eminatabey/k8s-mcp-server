@@ -1,0 +1,24 @@
+FROM golang:1.23-alpine AS builder
+WORKDIR /src
+
+RUN apk add --no-cache git ca-certificates
+
+COPY go.mod go.sum* ./
+RUN go mod download || true
+
+COPY . .
+
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags="-s -w" -o /out/k8s-mcp-server ./cmd/server
+
+FROM gcr.io/distroless/static-debian12:nonroot
+WORKDIR /
+COPY --from=builder /out/k8s-mcp-server /k8s-mcp-server
+
+USER nonroot:nonroot
+EXPOSE 8080
+ENV MCP_ADDR=":8080"
+
+ENTRYPOINT ["/k8s-mcp-server"]
